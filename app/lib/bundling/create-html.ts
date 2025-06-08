@@ -3,7 +3,6 @@ export function createFullHTML(files: Record<string, string>): string {
     const cssFiles = Object.entries(files).filter(([name]) => name.endsWith('.css'))
     const jsFiles = Object.entries(files).filter(([name]) => name.endsWith('.js'))
 
-    // If you have a main HTML file, inject CSS and JS into it
     if (htmlFile) {
         let html = htmlFile
         if (!html.includes('tailwindcss')) {
@@ -11,7 +10,6 @@ export function createFullHTML(files: Record<string, string>): string {
         }
         html = html.replace(/<script\s+src=['""][^'"]*\.jsx['""][^>]*><\/script>/g, '')
 
-        // Inject CSS
         const cssContent = cssFiles.map(([_, content]) => `<style>${content}</style>`).join('\n')
         html = html.replace('</head>', `${cssContent}\n</head>`)
 
@@ -28,7 +26,6 @@ export function createFullHTML(files: Record<string, string>): string {
         return html
     }
 
-    // If no HTML file, create one
     return `
   <!DOCTYPE html>
   <html>

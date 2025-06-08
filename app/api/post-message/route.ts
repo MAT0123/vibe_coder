@@ -6,15 +6,6 @@ import { Content } from '@/app/type/AIContent';
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-function extractJSON(content: string): string {
-  content = content.trim()
-  const isJson = content.startsWith('[') && content.endsWith("]")
-  if (isJson) { return content }
-  const startIndex = content.indexOf("[")
-  const endIndex = content.indexOf("]")
-
-  return content.slice(startIndex, endIndex)
-}
 export async function POST(req: Request) {
   const body = await req.json();
   const userPrompt = body.prompt || '';
@@ -123,41 +114,12 @@ Respond ONLY with the JSON object.
     let parsedContent: Content;
     try {
       parsedContent = JSON.parse(cleanContent) as Content;
+      console.log(parsedContent)
     } catch (err) {
       console.error('❌ Invalid JSON from OpenAI:', err);
       return NextResponse.json({ error: 'AI output is not valid JSON' }, { status: 500 });
     }
 
-    // for (const content of parsedContent) {
-    //   console.log(content)
-    // }
-    // const res = await fetch("https://u64nq44v89.execute-api.us-east-2.amazonaws.com/prod/code", {
-    //   method: "POST",
-    //   headers: {
-    //     "Content-Type": "application/json",
-    //   },
-    //   body: JSON.stringify(parsedContent)
-    // })
-    // const result = await res.json(); // ✅ Read once
-    // const { url, keys, bucket }: { url: string, keys: string[], bucket: string } = result
-    // const s3 = new S3Client({})
-    // console.log(result)
-    // let file: Record<string, string> = {}
-    // for (const key of keys) {
-    //   // const command = new GetObjectCommand({
-    //   //   Bucket: bucket,
-    //   //   Key: key
-    //   // })
-    //   // const commandRes = await s3.send(command)
-    //   // const content = await commandRes.Body?.transformToString()
-    //   const contentRes = await fetch(key, {
-    //     method: "GET",
-    //   })
-    //   const text = await contentRes.text()
-    //   file[key.slice(key.lastIndexOf("/") + 1)] = text
-    // }
-
-    // console.log(file)
     return NextResponse.json({ parsedContent });
   } catch (error: any) {
     console.error('OpenAI API Error:', error);

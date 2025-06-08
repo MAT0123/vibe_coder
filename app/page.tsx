@@ -1,16 +1,18 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
-import { Send, Sparkles, Code, Eye, Download, Share } from "lucide-react"
+import { Send, Sparkles, Code, Eye, Download, Share, Pen } from "lucide-react"
 import { Content } from "./type/AIContent"
 import init from "@swc/wasm-web"
 import dynamic from "next/dynamic"
 import { transformJsx } from "./lib/bundling/jsx-bundler"
 import { downloadFiles } from "./lib/downloadFiles"
 import { createFullHTML } from "./lib/bundling/create-html"
+import { createLiteralEscape, unescapeLiteral } from "./lib/createLiteralEscape"
+import { transformHtml } from "./lib/bundling/transformHtml"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -24,11 +26,16 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ),
 })
 let swcInitialized = false
-const InitializeSwc = async () => {
-  if (swcInitialized) return
-  await init()
-  swcInitialized = true
+const initSwc = async () => {
+  const InitializeSwc = async () => {
+    if (swcInitialized) return
+    await init()
+    swcInitialized = true
+  }
+  await InitializeSwc()
 }
+
+
 
 
 
@@ -53,61 +60,47 @@ export default function WebBuilder() {
 
   const handleFileSelect = (fileName: string) => {
     setSelectedFile(fileName)
+    //const literalString = unescapeLiteral()
     setEditorContent(files[fileName] || "")
   }
 
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
       setEditorContent(value)
-      setFiles(prev => ({
-        ...prev,
-        [selectedFile]: value
-      }))
+      // setFiles(prev => ({
+      //   ...prev,
+      //   [selectedFile]: createLiteralEscape(value)
+      // }))
     }
   }
+  useEffect(() => {
+    initSwc()
+  }, [])
 
-
-
-  const handleGenerate = async () => {
+  const handleGenerate = async (refine: { refine: boolean }) => {
     if (!prompt.trim()) return
 
     setIsGenerating(true)
 
-    const res = await fetch('/api/post-message', {
+    const bodyPrompt = refine ? `${prompt} , code to fix is ${files}` : prompt
+    console.log(`Body prompt: ${bodyPrompt}`)
+    const res = await fetch(refine ? '/api/post-message' : 'api/fix-code', {
       method: "POST",
-      body: JSON.stringify({ prompt: prompt })
+      body: JSON.stringify({ prompt: bodyPrompt })
     })
+    setPrompt("")
 
     const json = await res.json()
     const { parsedContent }: { parsedContent: Content } = json
-    const processedFiles: Record<string, string> = {}
-    await InitializeSwc()
-    for (const [fileName, fileData] of Object.entries(parsedContent)) {
-      let { code } = fileData
-      //code = unescape(code)
-      setFiles((prev) => ({ ...prev, [fileName]: code }))
-
-      if (fileName.endsWith(".jsx")) {
-
-        const transformed = await transformJsx(code)
-        processedFiles[fileName.replace('.jsx', '.js')] = transformed
-      } else {
-        const unescapedCode = code
-          .replace(/\\n/g, '\n')
-          .replace(/\\t/g, '\t')
-          .replace(/\\"/g, '"')
-          .replace(/\\\\/g, '\\');
-        processedFiles[fileName] = unescapedCode
-      }
-    }
-
-    const html = createFullHTML(processedFiles)
-    const blob = new Blob([html], { type: "text/html" })
-    const url = URL.createObjectURL(blob)
-
+    const url = await transformHtml({
+      content: parsedContent,
+      setFiles
+    })
     setIsGenerating(false)
-    setiframeURL(url!)
+    setiframeURL(url)
     setIsReady(true)
+
+
   }
 
   const handleClear = () => {
@@ -162,12 +155,17 @@ Examples:
 • Make a portfolio website for a designer"
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key == "Enter") {
+                        await handleGenerate({ refine: false })
+                      }
+                    }}
                     className="h-full resize-none text-sm"
                   />
                 </div>
 
                 <div className="flex space-x-2">
-                  <Button onClick={handleGenerate} disabled={!prompt.trim() || isGenerating} className="flex-1">
+                  <Button onClick={() => handleGenerate({ refine: false })} disabled={!prompt.trim() || isGenerating} className="flex-1">
                     {isGenerating ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
@@ -180,6 +178,18 @@ Examples:
                       </>
                     )}
                   </Button>
+                  {iframeURL && (
+                    <Button onClick={() => handleGenerate({ refine: true })} disabled={!prompt.trim() || isGenerating} className="flex-1">
+
+                      <>
+                        <Pen className="w-4 h-4 mr-2" />
+                        Refine
+                      </>
+
+                    </Button>
+                  )
+                  }
+
                   <Button variant="outline" onClick={handleClear}>
                     Clear
                   </Button>
