@@ -6,25 +6,47 @@ import { unescapeLiteral } from "../createLiteralEscape"
 
 interface TransformHtmlProps {
     setFiles: Dispatch<React.SetStateAction<Record<string, string>>>,
-    content: Content
+    content?: Content,
+    files?: Record<string, string>
 }
 export const transformHtml = async (props: TransformHtmlProps): Promise<string> => {
     const processedFiles: Record<string, string> = {}
-    for (const [fileName, fileData] of Object.entries(props.content)) {
-        let { code } = fileData
-        code = unescapeLiteral(code)
-        props.setFiles((prev) => ({ ...prev, [fileName]: code }))
+    console.log("Transforming")
+    if (props.content) {
+        for (const [fileName, fileData] of Object.entries(props.content)) {
+            let { code } = fileData
+            code = unescapeLiteral(code)
+            props.setFiles((prev) => ({ ...prev, [fileName]: code }))
 
-        if (fileName.endsWith(".jsx")) {
-            const transformed = await transformJsx(code)
-            processedFiles[fileName.replace('.jsx', '.js')] = transformed
-        } else {
-            const unescapedCode = code
-                .replace(/\\n/g, '\n')
-                .replace(/\\t/g, '\t')
-                .replace(/\\"/g, '"')
-                .replace(/\\\\/g, '\\');
-            processedFiles[fileName] = unescapedCode
+            if (fileName.endsWith(".jsx")) {
+                const transformed = await transformJsx(code)
+                processedFiles[fileName.replace('.jsx', '.js')] = transformed
+            } else {
+                const unescapedCode = code
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\t/g, '\t')
+                    .replace(/\\"/g, '"')
+                    .replace(/\\\\/g, '\\');
+                processedFiles[fileName] = unescapedCode
+            }
+        }
+    }
+    if (props.files) {
+        for (const [fileName, fileData] of Object.entries(props.files)) {
+            const code = unescapeLiteral(fileData)
+            props.setFiles((prev) => ({ ...prev, [fileName]: code }))
+
+            if (fileName.endsWith(".jsx")) {
+                const transformed = await transformJsx(code)
+                processedFiles[fileName.replace('.jsx', '.js')] = transformed
+            } else {
+                const unescapedCode = code
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\t/g, '\t')
+                    .replace(/\\"/g, '"')
+                    .replace(/\\\\/g, '\\');
+                processedFiles[fileName] = unescapedCode
+            }
         }
     }
 
@@ -34,3 +56,4 @@ export const transformHtml = async (props: TransformHtmlProps): Promise<string> 
 
     return url
 }
+

@@ -13,6 +13,7 @@ import { downloadFiles } from "./lib/downloadFiles"
 import { createFullHTML } from "./lib/bundling/create-html"
 import { createLiteralEscape, unescapeLiteral } from "./lib/createLiteralEscape"
 import { transformHtml } from "./lib/bundling/transformHtml"
+import { file } from "jszip"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -35,17 +36,6 @@ const initSwc = async () => {
   await InitializeSwc()
 }
 
-
-
-
-
-const addEscape = (file: string) => {
-  return file
-    .replace(/\\n/g, '\n')
-    .replace(/\\t/g, '\t')
-    .replace(/\\"/g, '"')
-    .replace(/\\\\/g, '\\');
-}
 export default function WebBuilder() {
   const [prompt, setPrompt] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
@@ -64,13 +54,15 @@ export default function WebBuilder() {
     setEditorContent(files[fileName] || "")
   }
 
-  const handleEditorChange = (value: string | undefined) => {
+  const handleEditorChange = async (value: string | undefined) => {
     if (value !== undefined) {
       setEditorContent(value)
-      // setFiles(prev => ({
-      //   ...prev,
-      //   [selectedFile]: createLiteralEscape(value)
-      // }))
+      const updatedFiles = {
+        ...files,
+        [selectedFile]: value
+      }
+      const url = await transformHtml({ setFiles, files: updatedFiles })
+      setiframeURL(url)
     }
   }
   useEffect(() => {
@@ -235,7 +227,7 @@ Examples:
                     height="100%"
                     language={selectedFile.endsWith('.jsx') ? 'javascript' : selectedFile.endsWith('.html') ? 'html' : 'css'}
                     value={editorContent}
-                    onChange={handleEditorChange}
+                    onChange={async (e) => await handleEditorChange(e)}
                     theme="vs-dark"
                     options={{
                       minimap: { enabled: false },
