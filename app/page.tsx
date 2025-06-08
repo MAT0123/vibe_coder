@@ -1,121 +1,73 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
 import { Send, Sparkles, Code, Eye, Download, Share } from "lucide-react"
-import path from "path"
 import { Content } from "./type/AIContent"
-import init, { transform } from "@swc/wasm-web"
+import init from "@swc/wasm-web"
+import dynamic from "next/dynamic"
+import { transformJsx } from "./lib/bundling/jsx-bundler"
+import { downloadFiles } from "./lib/downloadFiles"
+import { createFullHTML } from "./lib/bundling/create-html"
+
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full flex items-center justify-center">
+      <div className="flex items-center space-x-2 text-gray-500">
+        <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+        <span>Loading editor...</span>
+      </div>
+    </div>
+  ),
+})
 let swcInitialized = false
 const InitializeSwc = async () => {
   if (swcInitialized) return
   await init()
   swcInitialized = true
 }
-const transformJsx = async (jsx: string) => {
-  let cleanedJsx = jsx
+
+
+
+const addEscape = (file: string) => {
+  return file
     .replace(/\\n/g, '\n')
     .replace(/\\t/g, '\t')
     .replace(/\\"/g, '"')
     .replace(/\\\\/g, '\\');
-
-  cleanedJsx = cleanedJsx
-    .replace(/import\s+.*?from\s+['"]react['"];?\s*/g, '')
-    .replace(/import\s+.*?from\s+['"]react-dom['"];?\s*/g, '')
-    .replace(/import\s+React.*?;?\s*/g, '')
-    .replace(/import\s+ReactDOM.*?;?\s*/g, '');
-  console.log(cleanedJsx)
-  const res = await transform(cleanedJsx, {
-    jsc: {
-      parser: {
-        syntax: "typescript",
-        tsx: true,
-        decorators: false
-      },
-      transform: {
-        react: {
-          runtime: "classic",  // Change to classic
-          pragma: "React.createElement",
-          pragmaFrag: "React.Fragment",
-        }
-      },
-      target: "es5",
-      loose: true
-    },
-
-    module: {
-      type: "es6"
-    }
-  })
-  let code = res.code
-  if (code.includes('function App(')) {
-    code += '\n// Expose App to global scope\nwindow.App = App;'
-  }
-  return code
 }
-function createFullHTML(files: Record<string, string>): string {
-  const htmlFile = files['index.html'] || files['app.html'] || ''
-  const cssFiles = Object.entries(files).filter(([name]) => name.endsWith('.css'))
-  const jsFiles = Object.entries(files).filter(([name]) => name.endsWith('.js'))
-
-  // If you have a main HTML file, inject CSS and JS into it
-  if (htmlFile) {
-    let html = htmlFile
-    if (!html.includes('tailwindcss')) {
-      html = html.replace('</head>', `<script src="https://cdn.tailwindcss.com"></script>\n</head>`)
-    }
-    html = html.replace(/<script\s+src=['""][^'"]*\.jsx['""][^>]*><\/script>/g, '')
-
-    // Inject CSS
-    const cssContent = cssFiles.map(([_, content]) => `<style>${content}</style>`).join('\n')
-    html = html.replace('</head>', `${cssContent}\n</head>`)
-
-    const jsContent = jsFiles.map(([_, content]) => `<script>${content}</script>`).join('\n')
-    html = html.replace('</body>', `
-  ${jsContent}
-  <script>
-    if (typeof App !== 'undefined') {
-      const root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(React.createElement(App));
-    }
-  </script>
-</body>`)
-    return html
-  }
-
-  // If no HTML file, create one
-  return `
-  <!DOCTYPE html>
-  <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <script src="https://cdn.tailwindcss.com"></script>
-      ${cssFiles.map(([_, content]) => `<style>${content}</style>`).join('\n')}
-    </head>
-    <body>
-      <div id="root"></div>
-      <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-      <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-      ${jsFiles.map(([_, content]) => `<script>${content}</script>`).join('\n')}
-      <script defer>
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
-      </script>
-    </body>
-  </html>
-`
-}
-
 export default function WebBuilder() {
   const [prompt, setPrompt] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [iframeURL, setiframeURL] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
-  let files: Record<string, string> = {}
+  const [error, setError] = useState<string | null>(null)
+  let [files, setFiles] = useState<Record<string, string>>({})
+
+  const [selectedFile, setSelectedFile] = useState<string>("")
+  const [editorContent, setEditorContent] = useState<string>("")
+
+  const handleFileSelect = (fileName: string) => {
+    setSelectedFile(fileName)
+    setEditorContent(files[fileName] || "")
+  }
+
+  const handleEditorChange = (value: string | undefined) => {
+    if (value !== undefined) {
+      setEditorContent(value)
+      setFiles(prev => ({
+        ...prev,
+        [selectedFile]: value
+      }))
+    }
+  }
+
+
+
   const handleGenerate = async () => {
     if (!prompt.trim()) return
 
@@ -131,7 +83,9 @@ export default function WebBuilder() {
     const processedFiles: Record<string, string> = {}
     await InitializeSwc()
     for (const [fileName, fileData] of Object.entries(parsedContent)) {
-      const { code } = fileData
+      let { code } = fileData
+      //code = unescape(code)
+      setFiles((prev) => ({ ...prev, [fileName]: code }))
 
       if (fileName.endsWith(".jsx")) {
 
@@ -151,15 +105,7 @@ export default function WebBuilder() {
     const blob = new Blob([html], { type: "text/html" })
     const url = URL.createObjectURL(blob)
 
-
-    // setiframeURL(url)
-    // Object.entries(file).forEach(([fileName, content]) => {
-    //   localStorage.setItem(fileName, content)
-    //   console.log("Content")
-    // })
-    //files = file
     setIsGenerating(false)
-    //await updateVirtualFiles(file)
     setiframeURL(url!)
     setIsReady(true)
   }
@@ -168,15 +114,7 @@ export default function WebBuilder() {
     setPrompt("")
     setiframeURL("")
   }
-  // async function updateVirtualFiles(files: Record<string, string>) {
 
-  //   Object.entries(files).forEach(async ([fileName, content]) => {
-  //     const outDir = path.join(__dirname, "..", "virtual", fileName)
-
-  //     await writeFile(outDir, content)
-
-  //   })
-  // }
   return (
     <>
       <div className="min-h-screen bg-gray-50">
@@ -191,13 +129,10 @@ export default function WebBuilder() {
                 <h1 className="text-xl font-bold">AI Web Builder</h1>
               </div>
               <div className="flex items-center space-x-2">
-                <Button variant="outline" size="sm">
-                  <Share className="w-4 h-4 mr-2" />
-                  Share
-                </Button>
-                <Button variant="outline" size="sm">
+
+                <Button variant="outline" size="sm" onClick={() => downloadFiles(files)}>
                   <Download className="w-4 h-4 mr-2" />
-                  Export
+                  Download
                 </Button>
               </div>
             </div>
@@ -205,7 +140,7 @@ export default function WebBuilder() {
         </header>
 
         <div className="container mx-auto px-4 py-6">
-          <div className="grid lg:grid-cols-2 gap-6 h-[calc(100vh-120px)]">
+          <div className="grid lg:grid-cols-3 gap-6 h-[calc(100vh-120px)]">
             {/* Prompt Panel */}
             <Card className="flex flex-col">
               <div className="p-4 border-b">
@@ -249,6 +184,65 @@ Examples:
                     Clear
                   </Button>
                 </div>
+
+                {/* File List */}
+                {Object.keys(files).length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="text-sm font-medium mb-2">Files:</h3>
+                    <div className="space-y-1">
+                      {Object.keys(files).map((fileName) => (
+                        <button
+                          key={fileName}
+                          onClick={() => handleFileSelect(fileName)}
+                          className={`w-full text-left px-2 py-1 text-sm rounded ${selectedFile === fileName
+                            ? 'bg-blue-100 text-blue-900'
+                            : 'hover:bg-gray-100'
+                            }`}
+                        >
+                          {fileName}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Code Editor Panel */}
+            <Card className="flex flex-col">
+              <div className="p-4 border-b">
+                <div className="flex items-center space-x-2">
+                  <Code className="w-5 h-5" />
+                  <h2 className="font-semibold">
+                    {selectedFile || "Code Editor"}
+                  </h2>
+                </div>
+              </div>
+
+              <div className="flex-1">
+                {selectedFile ? (
+                  <MonacoEditor
+                    height="100%"
+                    language={selectedFile.endsWith('.jsx') ? 'javascript' : selectedFile.endsWith('.html') ? 'html' : 'css'}
+                    value={editorContent}
+                    onChange={handleEditorChange}
+                    theme="vs-dark"
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 14,
+                      wordWrap: 'on',
+                      automaticLayout: true,
+                    }}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-500">
+                    <div className="text-center">
+                      <Code className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-lg font-medium mb-2">No file selected</p>
+                      <p className="text-sm">Generate code first, then select a file to edit</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </Card>
 
@@ -272,7 +266,12 @@ Examples:
 
               <div className="flex-1 bg-gray-100">
                 {iframeURL ? (
-                  <iframe src={iframeURL} ref={iframeRef} className="w-full h-full border-0" title="Generated Website Preview" />
+                  <iframe
+                    src={iframeURL}
+                    ref={iframeRef}
+                    className="w-full h-full border-0"
+                    title="Generated Website Preview"
+                  />
                 ) : (
                   <div className="h-full flex items-center justify-center text-gray-500">
                     <div className="text-center">
