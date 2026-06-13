@@ -1,59 +1,34 @@
-import { Content } from "@/app/type/AIContent"
 import { transformJsx } from "./jsx-bundler"
 import { createFullHTML } from "./create-html"
-import { Dispatch } from "react"
 import { unescapeLiteral } from "../createLiteralEscape"
 
-interface TransformHtmlProps {
-    setFiles: Dispatch<React.SetStateAction<Record<string, string>>>,
-    content?: Content,
-    files?: Record<string, string>
-}
-export const transformHtml = async (props: TransformHtmlProps): Promise<string> => {
-    const processedFiles: Record<string, string> = {}
-    console.log("Transforming")
-    if (props.content) {
-        for (const [fileName, fileData] of Object.entries(props.content)) {
-            let { code } = fileData
-            code = unescapeLiteral(code)
-            props.setFiles((prev) => ({ ...prev, [fileName]: code }))
+export const transformHtml = async (files: Record<string, string>): Promise<string> => {
+  const processedFiles: Record<string, string> = {}
 
-            if (fileName.endsWith(".jsx")) {
-                const transformed = await transformJsx(code)
-                processedFiles[fileName.replace('.jsx', '.js')] = transformed
-            } else {
-                const unescapedCode = code
-                    .replace(/\\n/g, '\n')
-                    .replace(/\\t/g, '\t')
-                    .replace(/\\"/g, '"')
-                    .replace(/\\\\/g, '\\');
-                processedFiles[fileName] = unescapedCode
-            }
-        }
-    }
-    if (props.files) {
-        for (const [fileName, fileData] of Object.entries(props.files)) {
-            const code = unescapeLiteral(fileData)
-            props.setFiles((prev) => ({ ...prev, [fileName]: code }))
-
-            if (fileName.endsWith(".jsx")) {
-                const transformed = await transformJsx(code)
-                processedFiles[fileName.replace('.jsx', '.js')] = transformed
-            } else {
-                const unescapedCode = code
-                    .replace(/\\n/g, '\n')
-                    .replace(/\\t/g, '\t')
-                    .replace(/\\"/g, '"')
-                    .replace(/\\\\/g, '\\');
-                processedFiles[fileName] = unescapedCode
-            }
-        }
+  for (const [fileName, fileData] of Object.entries(files)) {
+    // Unescape any doubly-escaped characters coming from JSON serialisation
+    let code = fileData
+    if (code.includes("\\n") || code.includes('\\"')) {
+      code = unescapeLiteral(code)
     }
 
-    const html = createFullHTML(processedFiles)
-    const blob = new Blob([html], { type: "text/html" })
-    const url = URL.createObjectURL(blob)
+    if (fileName.endsWith(".jsx") || fileName.endsWith(".tsx")) {
+      try {
+        const transformed = await transformJsx(code)
+        // Store under a .js filename so the HTML assembler treats it as plain JS
+        const jsName = fileName.replace(/\.(jsx|tsx)$/, ".js")
+        processedFiles[jsName] = transformed
+      } catch (err: any) {
+        console.error(`Failed to transform ${fileName}:`, err)
+        // Re-throw so the caller can surface the exact error to the user
+        throw err
+      }
+    } else {
+      processedFiles[fileName] = code
+    }
+  }
 
-    return url
+  const html = createFullHTML(processedFiles)
+  const blob = new Blob([html], { type: "text/html" })
+  return URL.createObjectURL(blob)
 }
-

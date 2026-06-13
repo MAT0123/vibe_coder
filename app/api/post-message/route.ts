@@ -1,21 +1,37 @@
-import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
-import { transform } from '@swc/wasm-web';
-import { Content } from '@/app/type/AIContent';
+import { db } from '@/lib/db';
+import { getAuthenticatedUser } from '@/lib/authMiddleware';
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-export async function POST(req: Request) {
-  const body = await req.json();
-  const userPrompt = body.prompt || '';
-  const fullPrompt = `
+
+export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
+  }
+
+  if (user.tokenBalance <= 0) {
+    return NextResponse.json({ error: "Insufficient tokens. Please purchase more tokens." }, { status: 402 });
+  }
+
+  try {
+    const body = await req.json();
+    const userPrompt = body.prompt || '';
+    const selectedModel = body.model || 'o3-mini';
+
+    const allowedModels = ['o3-mini', 'o1', 'gpt-4o', 'gpt-4o-mini'];
+    const modelToUse = allowedModels.includes(selectedModel) ? selectedModel : 'o3-mini';
+
+    const fullPrompt = `
 You are a strict code generator. Respond ONLY with a valid JSON object.
 
 Format:
 {
   "FileName.ext": {
-    "code": "file content with all newlines (\\n) and double quotes (\\") properly escaped"
+    "code": "string representation of the complete file content"
   }
 }
 
@@ -44,7 +60,7 @@ function App() {
       <div className="flex gap-2">
         <button 
           onClick={() => setCount(count - 1)}
-          className="px-4 py-2 bg-red-500 text-white rounded"
+          className="px-4 py-2 bg-red-505 text-white rounded"
         >
           -
         </button>
@@ -91,36 +107,51 @@ Focus on:
 Respond ONLY with the JSON object.
 `;
 
-
-  try {
     const completion = await openai.chat.completions.create({
-      model: 'o3-mini',
+      model: modelToUse,
       messages: [
         {
           role: 'user',
           content: fullPrompt,
         },
       ],
-      // temperature: 0.7,
+      response_format: { type: 'json_object' },
     });
 
     const content = completion.choices[0]?.message?.content || '';
-    let cleanContent = content.trim()
+    
+    let cleanContent = content.trim();
     if (cleanContent.startsWith('```json')) {
       cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
     } else if (cleanContent.startsWith('```')) {
       cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
-    let parsedContent: Content;
-    try {
-      parsedContent = JSON.parse(cleanContent) as Content;
-      console.log(parsedContent)
-    } catch (err) {
-      console.error('❌ Invalid JSON from OpenAI:', err);
-      return NextResponse.json({ error: 'AI output is not valid JSON' }, { status: 500 });
+
+    const firstBrace = cleanContent.indexOf('{');
+    const lastBrace = cleanContent.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      cleanContent = cleanContent.substring(firstBrace, lastBrace + 1);
     }
 
-    return NextResponse.json({ parsedContent });
+    let parsedContent;
+    try {
+      parsedContent = JSON.parse(cleanContent);
+    } catch (err) {
+      console.error('❌ Invalid JSON from OpenAI:', err, 'Raw content:', content);
+      return NextResponse.json({ error: 'AI output is not valid JSON' }, { status: 550 });
+    }
+
+    const tokensUsed = completion.usage?.total_tokens || 1000;
+    
+    // Update balance via custom JSON database
+    const updatedUser = db.updateUserBalance(user.id, -tokensUsed);
+    const balance = updatedUser ? updatedUser.tokenBalance : user.tokenBalance - tokensUsed;
+
+    return NextResponse.json({ 
+      parsedContent, 
+      tokenBalance: balance, 
+      tokensUsed 
+    });
   } catch (error: any) {
     console.error('OpenAI API Error:', error);
     return NextResponse.json({ error: error.message || 'Unexpected error' }, { status: 500 });

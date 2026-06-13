@@ -1,0 +1,12 @@
+{
+  "users": [
+    {
+      "id": "2q83wnn0z",
+      "email": "matthewaureliustjoa@gmail.com",
+      "passwordHash": "COGNITO_VERIFIED",
+      "tokenBalance": 24370.8,
+      "createdAt": "2026-06-13T20:29:25.606Z"
+    }
+  ],
+  "payments": []
+}
