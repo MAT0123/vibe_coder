@@ -9,6 +9,22 @@ function generateSubdomain(): string {
   return nanoid(SUBDOMAIN_LENGTH).toLowerCase()
 }
 
+function unescapeFileContent(files: Record<string, string>): Record<string, string> {
+  const unescaped: Record<string, string> = {}
+  for (const [key, val] of Object.entries(files || {})) {
+    if (typeof val === 'string') {
+      unescaped[key] = val
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+    } else {
+      unescaped[key] = val;
+    }
+  }
+  return unescaped;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -46,7 +62,7 @@ export async function POST(request: Request) {
       name,
       subdomain,
       customDomainVerified: false,
-      files,
+      files: unescapeFileContent(files),
       deploymentType: 'static',
       status: 'draft',
       createdAt: new Date(),

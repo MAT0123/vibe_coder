@@ -58,12 +58,34 @@ export async function GET(request: Request) {
       })
     }
 
+    // Unescape all file contents in project.files
+    const unescapedFiles: Record<string, string> = {}
+    for (const [key, val] of Object.entries(project.files || {})) {
+      if (typeof val === 'string') {
+        unescapedFiles[key] = val
+          .replace(/\\n/g, '\n')
+          .replace(/\\t/g, '\t')
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, '\\');
+      } else {
+        unescapedFiles[key] = val;
+      }
+    }
+
     // Serve static files from the project
-    const fileContent = project.files[path] || 
-                       project.files[path.slice(1)] || // try without leading slash
-                       project.files[path + '/index.html'] || // try index.html in folder
-                       project.files['/index.html'] || // fallback to root
-                       project.files['index.html']
+    let fileContent: string | undefined = undefined
+    const isHtmlRequest = path.endsWith('.html') || path === '/' || !path.includes('.')
+
+    if (isHtmlRequest) {
+      const { createFullHTML } = await import('@/app/lib/bundling/create-html')
+      fileContent = createFullHTML(unescapedFiles)
+    } else {
+      fileContent = unescapedFiles[path] || 
+                    unescapedFiles[path.slice(1)] || // try without leading slash
+                    unescapedFiles[path + '/index.html'] || // try index.html in folder
+                    unescapedFiles['/index.html'] || // fallback to root
+                    unescapedFiles['index.html']
+    }
 
     if (!fileContent) {
       return new NextResponse(`File not found: ${path}`, { status: 404 })

@@ -101,6 +101,7 @@ export default function WebBuilder() {
       if (fileName.endsWith(".jsx")) {
         const transformed = await transformJsx(unescapedCode)
         processedFiles[fileName.replace('.jsx', '.js')] = transformed
+        setFiles((prev) => ({ ...prev, [fileName.replace('.jsx', '.js')]: transformed }))
       } else {
         processedFiles[fileName] = unescapedCode
       }

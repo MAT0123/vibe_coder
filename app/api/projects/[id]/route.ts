@@ -7,6 +7,22 @@ interface RouteParams {
   params: Promise<{ id: string }>
 }
 
+function unescapeFileContent(files: Record<string, string>): Record<string, string> {
+  const unescaped: Record<string, string> = {}
+  for (const [key, val] of Object.entries(files || {})) {
+    if (typeof val === 'string') {
+      unescaped[key] = val
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+    } else {
+      unescaped[key] = val;
+    }
+  }
+  return unescaped;
+}
+
 export async function GET(request: Request, { params }: RouteParams) {
   try {
     const { id } = await params
@@ -32,7 +48,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     const projects = await getCollection('projects')
     const update: any = { updatedAt: new Date() }
     
-    if (body.files) update.files = body.files
+    if (body.files) update.files = unescapeFileContent(body.files)
     if (body.name) update.name = body.name
     if (body.customDomain !== undefined) update.customDomain = body.customDomain
     
