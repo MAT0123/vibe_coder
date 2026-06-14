@@ -11,7 +11,7 @@ import {
   Smartphone, Tablet, Monitor, Terminal, AlertCircle, 
   CheckCircle2, FileCode, RefreshCw, X, Copy, ExternalLink,
   Bot, User, LogOut, Coins, CreditCard, Lock, Mail, Key,
-  Share, Globe, Rocket
+  Share, Globe, Rocket, Plus
 } from "lucide-react"
 import { Content } from "./type/AIContent"
 import { transformJsx } from "./lib/bundling/jsx-bundler"
@@ -140,6 +140,29 @@ export default function WebBuilder() {
 
     checkSession()
   }, [])
+
+  // Fetch user projects list when authenticated and load the latest one
+  useEffect(() => {
+    if (user) {
+      const fetchProjects = async () => {
+        try {
+          const res = await fetch(`/api/projects?userId=${user.id}`)
+          const data = await res.json()
+          if (Array.isArray(data)) {
+            setProjectsList(data)
+            // Auto-load their most recent project on mount if not currently loaded
+            if (data.length > 0 && !projectId) {
+              loadProject(data[0])
+            }
+          }
+        } catch (err) {
+          console.error("Failed to load projects list:", err)
+        }
+      }
+      fetchProjects()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
 
   // Scroll to bottom of chat feed when messages update
@@ -302,6 +325,71 @@ export default function WebBuilder() {
   const [showDomainModal, setShowDomainModal] = useState(false)
   const [customDomain, setCustomDomain] = useState("")
   const [domainInstructions, setDomainInstructions] = useState<any>(null)
+  const [projectsList, setProjectsList] = useState<any[]>([])
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const loadProject = async (project: any) => {
+    setProjectId(project._id)
+    setFiles(project.files)
+    if (project.messages && project.messages.length > 0) {
+      const rehydrated = project.messages.map((m: any) => ({
+        ...m,
+        timestamp: new Date(m.timestamp)
+      }))
+      setMessages(rehydrated)
+    } else {
+      setMessages([
+        {
+          id: 'welcome',
+          role: 'assistant',
+          content: "Hello! I'm your AI web developer. Tell me what you'd like to build today, and I'll generate the HTML, CSS, and React components for you. You can preview and edit the code in the right panel.",
+          timestamp: new Date()
+        }
+      ])
+    }
+    setDeploymentUrl(project.deploymentUrl || null)
+    
+    // Automatically select default file
+    let defaultFile = "App.jsx"
+    if (!project.files[defaultFile]) {
+      defaultFile = Object.keys(project.files)[0] || ""
+    }
+    if (defaultFile) {
+      setSelectedFile(defaultFile)
+      setEditorContent(project.files[defaultFile])
+    } else {
+      setSelectedFile("")
+      setEditorContent("")
+    }
+
+    try {
+      setError(null)
+      const url = await transformHtml(project.files)
+      setiframeURL(url)
+    } catch (err: any) {
+      setError(err.message || "Failed to compile JSX.")
+    }
+  }
+
+  const handleNewProject = () => {
+    setProjectId(null)
+    setFiles({})
+    setiframeURL(null)
+    setSelectedFile("")
+    setEditorContent("")
+    setDeploymentUrl(null)
+    setError(null)
+    setLogs([])
+    setMessages([
+      {
+        id: 'welcome',
+        role: 'assistant',
+        content: "Hello! I'm your AI web developer. Tell me what you'd like to build today, and I'll generate the HTML, CSS, and React components for you. You can preview and edit the code in the right panel.",
+        timestamp: new Date()
+      }
+    ])
+    setActiveTab('preview')
+  }
 
   const handleFileSelect = (fileName: string) => {
     setSelectedFile(fileName)
@@ -335,6 +423,25 @@ export default function WebBuilder() {
       } catch (err: any) {
         console.error("Live reload transform error:", err)
         setError(err.message || "Failed to compile JSX changes.")
+      }
+      // Auto-save edits with a 2-second debounce
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+
+      if (projectId) {
+        saveTimeoutRef.current = setTimeout(async () => {
+          try {
+            await fetch(`/api/projects/${projectId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ files: updatedFiles }),
+            })
+            setProjectsList(prev => prev.map(p => p._id === projectId ? { ...p, files: updatedFiles } : p))
+          } catch (err) {
+            console.error("Auto-save editor change failed:", err)
+          }
+        }, 2000)
       }
     }
   }
@@ -542,14 +649,67 @@ export default function WebBuilder() {
 
       setiframeURL(compiledUrl)
       
-      setMessages(msgs => msgs.map(m => m.id === assistantMsgId ? {
-        ...m,
+      const assistantSuccessMessage: ChatMessage = {
+        id: assistantMsgId,
+        role: 'assistant',
         content: lastCompileError
           ? `⚠️ Fixed after auto-repair! The AI corrected a compilation issue. Check the live preview.`
           : `I've successfully updated your application! You can check the live view and inspect files in the editor.`,
         status: 'success',
-        files: filesWithCompiledJs
-      } : m))
+        files: filesWithCompiledJs,
+        timestamp: new Date()
+      }
+
+      setMessages(msgs => msgs.map(m => m.id === assistantMsgId ? assistantSuccessMessage : m))
+
+      const updatedMessages = [
+        ...messages,
+        userMessage,
+        assistantSuccessMessage
+      ]
+
+      if (projectId) {
+        try {
+          await fetch(`/api/projects/${projectId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: filesWithCompiledJs, messages: updatedMessages }),
+          })
+          setProjectsList(prev => prev.map(p => p._id === projectId ? { ...p, files: filesWithCompiledJs, messages: updatedMessages } : p))
+        } catch (err) {
+          console.error("Auto-save updated project failed:", err)
+        }
+      } else {
+        try {
+          const projectName = promptToSend ? promptToSend.slice(0, 50) : 'Untitled Project'
+          const createRes = await fetch('/api/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: projectName,
+              userId: user ? user.id : 'anonymous',
+              files: filesWithCompiledJs,
+              messages: updatedMessages
+            }),
+          })
+          const createData = await createRes.json()
+          if (createRes.ok && createData.projectId) {
+            setProjectId(createData.projectId)
+            const newProj = {
+              _id: createData.projectId,
+              name: projectName,
+              userId: user ? user.id : 'anonymous',
+              subdomain: createData.subdomain,
+              files: filesWithCompiledJs,
+              messages: updatedMessages,
+              createdAt: new Date()
+            }
+            setProjectsList(prev => [newProj, ...prev])
+          }
+        } catch (err) {
+          console.error("Auto-save new project failed:", err)
+        }
+      }
 
       setActiveTab('preview')
       setIsGenerating(false)
@@ -614,8 +774,9 @@ export default function WebBuilder() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: prompt.slice(0, 50) || 'Untitled Project',
-            userId: 'anonymous',
+            userId: user ? user.id : 'anonymous',
             files,
+            messages
           }),
         })
         
@@ -721,8 +882,43 @@ export default function WebBuilder() {
             </div>
           </div>
 
-          {/* User profile & token badges & Deploy */}
           <div className="flex items-center space-x-3">
+            {projectsList.length > 0 && (
+              <div className="flex items-center bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl text-xs font-semibold shadow-sm mr-1">
+                <span className="text-slate-400 font-medium mr-1.5">Project:</span>
+                <select
+                  value={projectId || ""}
+                  onChange={(e) => {
+                    const selected = projectsList.find(p => p._id === e.target.value)
+                    if (selected) {
+                      loadProject(selected)
+                    } else if (e.target.value === "new") {
+                      handleNewProject()
+                    }
+                  }}
+                  className="bg-transparent border-0 focus:ring-0 outline-none font-bold text-slate-700 cursor-pointer text-xs p-0 pr-6"
+                >
+                  {projectsList.map((p) => (
+                    <option key={p._id} value={p._id}>
+                      {p.name ? (p.name.length > 20 ? p.name.slice(0, 20) + '...' : p.name) : "Untitled Project"}
+                    </option>
+                  ))}
+                  <option value="new">+ Start New Project</option>
+                </select>
+              </div>
+            )}
+            
+            {projectId && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleNewProject}
+                className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                New Project
+              </Button>
+            )}
             {deploymentUrl && (
               <>
                 <a 

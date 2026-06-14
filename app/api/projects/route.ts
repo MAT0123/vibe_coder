@@ -57,12 +57,13 @@ export async function POST(request: Request) {
       )
     }
 
-    const project: Project = {
+    const project: any = {
       userId: userId || 'anonymous',
       name,
       subdomain,
       customDomainVerified: false,
       files: unescapeFileContent(files),
+      messages: body.messages || [],
       deploymentType: 'static',
       status: 'draft',
       createdAt: new Date(),

@@ -51,6 +51,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (body.files) update.files = unescapeFileContent(body.files)
     if (body.name) update.name = body.name
     if (body.customDomain !== undefined) update.customDomain = body.customDomain
+    if (body.messages !== undefined) update.messages = body.messages
     
     const result = await projects.updateOne(
       { _id: new ObjectId(id) },
