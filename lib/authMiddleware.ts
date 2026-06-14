@@ -36,7 +36,7 @@ export async function getAuthenticatedUser(req: NextRequest) {
   if (sessionCookie) {
     const email = verifySession(sessionCookie.value)
     if (email) {
-      const localUser = db.findUserByEmail(email)
+      const localUser = await db.findUserByEmail(email)
       if (localUser) return localUser
     }
   }
@@ -57,9 +57,9 @@ export async function getAuthenticatedUser(req: NextRequest) {
 
     if (!email) return null
 
-    let localUser = db.findUserByEmail(email)
+    let localUser = await db.findUserByEmail(email)
     if (!localUser) {
-      localUser = db.createUser(email, "COGNITO_EXTERNAL_AUTH")
+      localUser = await db.createUser(email, "COGNITO_EXTERNAL_AUTH")
     }
 
     return localUser

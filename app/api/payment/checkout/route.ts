@@ -83,8 +83,8 @@ export async function POST(req: NextRequest) {
     // Fallback Mock Transaction: Record and increment via custom JSON database
     console.log(`💳 Running Mock Payment: Crediting ${tokensToCredit} tokens to ${user.email} for $${amount}`)
     
-    const payment = db.createPayment(user.id, amount, tokensToCredit)
-    const updatedUser = db.findUserById(user.id)
+    const payment = await db.createPayment(user.id, amount, tokensToCredit)
+    const updatedUser = await db.findUserById(user.id)
 
     return NextResponse.json({ 
       success: true, 

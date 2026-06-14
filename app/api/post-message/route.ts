@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
     const tokensUsed = Math.round((completion.usage?.total_tokens || 1000) * 1.50);
     
     // Update balance via custom JSON database
-    const updatedUser = db.updateUserBalance(user.id, -tokensUsed);
+    const updatedUser = await db.updateUserBalance(user.id, -tokensUsed);
     const balance = updatedUser ? updatedUser.tokenBalance : user.tokenBalance - tokensUsed;
 
     return NextResponse.json({ 

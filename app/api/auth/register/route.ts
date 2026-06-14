@@ -27,8 +27,9 @@ export async function POST(req: Request) {
     const response = await cognitoClient.send(command)
 
     // Store unverified user record in local database immediately upon signup
-    if (!db.findUserByEmail(username)) {
-      db.createUser(username, "COGNITO_UNVERIFIED")
+    const existingUser = await db.findUserByEmail(username)
+    if (!existingUser) {
+      await db.createUser(username, "COGNITO_UNVERIFIED")
     }
 
     return NextResponse.json({

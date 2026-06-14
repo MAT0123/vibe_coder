@@ -95,7 +95,7 @@ User's change request: ${userPrompt}`
     }
 
     const tokensUsed = Math.round((completion.usage?.total_tokens as number || 1000) * 1.50);
-    const updatedUser = db.updateUserBalance(user.id, -tokensUsed);
+    const updatedUser = await db.updateUserBalance(user.id, -tokensUsed);
     const balance = updatedUser ? updatedUser.tokenBalance : user.tokenBalance - tokensUsed;
 
     return NextResponse.json({ parsedContent, tokenBalance: balance, tokensUsed });

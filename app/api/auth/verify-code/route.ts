@@ -24,10 +24,11 @@ export async function POST(req: Request) {
     await cognitoClient.send(command)
 
     // Update local user record status to verified upon confirmation
-    if (db.findUserByEmail(username)) {
-      db.updateUserPasswordHash(username, "COGNITO_VERIFIED")
+    const userExists = await db.findUserByEmail(username)
+    if (userExists) {
+      await db.updateUserPasswordHash(username, "COGNITO_VERIFIED")
     } else {
-      db.createUser(username, "COGNITO_VERIFIED")
+      await db.createUser(username, "COGNITO_VERIFIED")
     }
 
     return NextResponse.json({

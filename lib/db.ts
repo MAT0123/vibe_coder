@@ -1,7 +1,4 @@
-import fs from "fs"
-import path from "path"
-
-const DB_FILE = path.join(process.cwd(), "database.json")
+import { getCollection } from "@/app/lib/db"
 
 export interface User {
   id: string
@@ -20,87 +17,73 @@ export interface Payment {
   createdAt: string
 }
 
-interface DatabaseSchema {
-  users: User[]
-  payments: Payment[]
-}
-
-function initDb(): DatabaseSchema {
-  if (!fs.existsSync(DB_FILE)) {
-    const defaultData: DatabaseSchema = { users: [], payments: [] }
-    fs.writeFileSync(DB_FILE, JSON.stringify(defaultData, null, 2))
-    return defaultData
-  }
-  try {
-    const raw = fs.readFileSync(DB_FILE, "utf-8")
-    return JSON.parse(raw)
-  } catch (err) {
-    const defaultData: DatabaseSchema = { users: [], payments: [] }
-    fs.writeFileSync(DB_FILE, JSON.stringify(defaultData, null, 2))
-    return defaultData
-  }
-}
-
-function saveDb(data: DatabaseSchema) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2))
-}
-
 export const db = {
-  getUsers: (): User[] => {
-    return initDb().users
-  },
-  
-  findUserByEmail: (email: string): User | null => {
-    const users = db.getUsers()
-    return users.find(u => u.email === email.toLowerCase()) || null
+  findUserByEmail: async (email: string): Promise<User | null> => {
+    const collection = await getCollection("users")
+    const doc = await collection.findOne({ email: email.toLowerCase() })
+    if (!doc) return null
+    return {
+      id: doc.id,
+      email: doc.email,
+      passwordHash: doc.passwordHash,
+      tokenBalance: doc.tokenBalance,
+      createdAt: doc.createdAt
+    }
   },
 
-  findUserById: (id: string): User | null => {
-    const users = db.getUsers()
-    return users.find(u => u.id === id) || null
+  findUserById: async (id: string): Promise<User | null> => {
+    const collection = await getCollection("users")
+    const doc = await collection.findOne({ id })
+    if (!doc) return null
+    return {
+      id: doc.id,
+      email: doc.email,
+      passwordHash: doc.passwordHash,
+      tokenBalance: doc.tokenBalance,
+      createdAt: doc.createdAt
+    }
   },
 
-  createUser: (email: string, passwordHash: string): User => {
-    const data = initDb()
+  createUser: async (email: string, passwordHash: string): Promise<User> => {
+    const collection = await getCollection("users")
     const newUser: User = {
       id: Math.random().toString(36).substring(2, 11),
       email: email.toLowerCase(),
       passwordHash,
-      tokenBalance: 25000, // 25k tokens (equivalent to ~$0.05 USD)
+      tokenBalance: 600000, // Generous default tokens for demo/eval
       createdAt: new Date().toISOString()
     }
-    data.users.push(newUser)
-    saveDb(data)
+    await collection.insertOne(newUser)
     return newUser
   },
 
-  updateUserPasswordHash: (email: string, passwordHash: string): User | null => {
-    const data = initDb()
-    const userIndex = data.users.findIndex(u => u.email === email.toLowerCase())
-    if (userIndex === -1) return null
-
-    data.users[userIndex].passwordHash = passwordHash
-    saveDb(data)
-    return data.users[userIndex]
+  updateUserPasswordHash: async (email: string, passwordHash: string): Promise<User | null> => {
+    const collection = await getCollection("users")
+    await collection.updateOne(
+      { email: email.toLowerCase() },
+      { $set: { passwordHash } }
+    )
+    return db.findUserByEmail(email)
   },
 
-  updateUserBalance: (userId: string, tokensToChange: number): User | null => {
-    const data = initDb()
-    const userIndex = data.users.findIndex(u => u.id === userId)
-    if (userIndex === -1) return null
-
-    data.users[userIndex].tokenBalance += tokensToChange
-    // Clamp to 0
-    if (data.users[userIndex].tokenBalance < 0) {
-      data.users[userIndex].tokenBalance = 0
+  updateUserBalance: async (userId: string, tokensToChange: number): Promise<User | null> => {
+    const collection = await getCollection("users")
+    await collection.updateOne(
+      { id: userId },
+      { $inc: { tokenBalance: tokensToChange } }
+    )
+    
+    // Ensure it doesn't go below 0
+    const user = await db.findUserById(userId)
+    if (user && user.tokenBalance < 0) {
+      await collection.updateOne({ id: userId }, { $set: { tokenBalance: 0 } })
+      user.tokenBalance = 0
     }
-
-    saveDb(data)
-    return data.users[userIndex]
+    return user
   },
 
-  createPayment: (userId: string, amount: number, tokensCredited: number): Payment => {
-    const data = initDb()
+  createPayment: async (userId: string, amount: number, tokensCredited: number): Promise<Payment> => {
+    const collection = await getCollection("payments")
     const newPayment: Payment = {
       id: Math.random().toString(36).substring(2, 11),
       userId,
@@ -109,15 +92,14 @@ export const db = {
       status: "COMPLETED",
       createdAt: new Date().toISOString()
     }
-    data.payments.push(newPayment)
-    
-    // Auto increment user balance
-    const userIndex = data.users.findIndex(u => u.id === userId)
-    if (userIndex !== -1) {
-      data.users[userIndex].tokenBalance += tokensCredited
-    }
-    
-    saveDb(data)
+    await collection.insertOne(newPayment)
+
+    const usersCol = await getCollection("users")
+    await usersCol.updateOne(
+      { id: userId },
+      { $inc: { tokenBalance: tokensCredited } }
+    )
+
     return newPayment
   }
 }

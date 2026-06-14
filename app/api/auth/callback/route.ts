@@ -77,9 +77,9 @@ export async function GET(req: NextRequest) {
 
     let userEmailForSession = email
     if (email) {
-      let localUser = db.findUserByEmail(email)
+      let localUser = await db.findUserByEmail(email)
       if (!localUser) {
-        localUser = db.createUser(email, "GOOGLE_OAUTH")
+        localUser = await db.createUser(email, "GOOGLE_OAUTH")
       }
       userEmailForSession = localUser.email
     }

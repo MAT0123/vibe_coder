@@ -33,9 +33,9 @@ export async function POST(req: Request) {
     }
 
     // Ensure local user record exists
-    let localUser = db.findUserByEmail(username)
+    let localUser = await db.findUserByEmail(username)
     if (!localUser) {
-      localUser = db.createUser(username, "COGNITO_EXTERNAL_AUTH")
+      localUser = await db.createUser(username, "COGNITO_EXTERNAL_AUTH")
     }
 
     const nextResponse = NextResponse.json({
