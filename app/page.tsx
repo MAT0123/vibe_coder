@@ -4,7 +4,7 @@ import { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
-import { Send, Sparkles, Code, Eye, Download, Share } from "lucide-react"
+import { Send, Sparkles, Code, Eye, Download, Share, Globe, Rocket } from "lucide-react"
 import { Content } from "./type/AIContent"
 import init from "@swc/wasm-web"
 import dynamic from "next/dynamic"
@@ -47,9 +47,15 @@ export default function WebBuilder() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   let [files, setFiles] = useState<Record<string, string>>({})
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [deploymentUrl, setDeploymentUrl] = useState<string | null>(null)
+  const [isDeploying, setIsDeploying] = useState(false)
 
   const [selectedFile, setSelectedFile] = useState<string>("")
   const [editorContent, setEditorContent] = useState<string>("")
+  const [showDomainModal, setShowDomainModal] = useState(false)
+  const [customDomain, setCustomDomain] = useState("")
+  const [domainInstructions, setDomainInstructions] = useState<any>(null)
 
   const handleFileSelect = (fileName: string) => {
     setSelectedFile(fileName)
@@ -115,6 +121,78 @@ export default function WebBuilder() {
     setiframeURL("")
   }
 
+  const handleDeploy = async (type: 'static' | 'vercel' = 'static') => {
+    if (Object.keys(files).length === 0) return
+    
+    setIsDeploying(true)
+    setError(null)
+    
+    try {
+      let currentProjectId = projectId
+      
+      // Create project if not exists
+      if (!currentProjectId) {
+        const createRes = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: prompt.slice(0, 50) || 'Untitled Project',
+            userId: 'anonymous',
+            files,
+          }),
+        })
+        
+        const createData = await createRes.json()
+        if (!createRes.ok) throw new Error(createData.error)
+        
+        currentProjectId = createData.projectId
+        setProjectId(currentProjectId)
+      } else {
+        // Update project files
+        await fetch(`/api/projects/${currentProjectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files }),
+        })
+      }
+      
+      // Deploy
+      const deployRes = await fetch(`/api/projects/${currentProjectId}/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      })
+      
+      const deployData = await deployRes.json()
+      if (!deployRes.ok) throw new Error(deployData.error)
+      
+      setDeploymentUrl(deployData.deploymentUrl)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setIsDeploying(false)
+    }
+  }
+
+  const handleAddDomain = async () => {
+    if (!projectId || !customDomain) return
+    
+    try {
+      const res = await fetch(`/api/projects/${projectId}/domains`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: customDomain }),
+      })
+      
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      
+      setDomainInstructions(data.instructions)
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
   return (
     <>
       <div className="min-h-screen bg-gray-50">
@@ -129,7 +207,40 @@ export default function WebBuilder() {
                 <h1 className="text-xl font-bold">AI Web Builder</h1>
               </div>
               <div className="flex items-center space-x-2">
-
+                {deploymentUrl && (
+                  <>
+                    <a 
+                      href={deploymentUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline flex items-center"
+                    >
+                      <Globe className="w-4 h-4 mr-1" />
+                      {deploymentUrl.replace('https://', '')}
+                    </a>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setShowDomainModal(true)}
+                    >
+                      <Globe className="w-4 h-4 mr-1" />
+                      Custom Domain
+                    </Button>
+                  </>
+                )}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handleDeploy('static')}
+                  disabled={isDeploying || Object.keys(files).length === 0}
+                >
+                  {isDeploying ? (
+                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-2" />
+                  ) : (
+                    <Rocket className="w-4 h-4 mr-2" />
+                  )}
+                  Deploy
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => downloadFiles(files)}>
                   <Download className="w-4 h-4 mr-2" />
                   Download
@@ -138,6 +249,68 @@ export default function WebBuilder() {
             </div>
           </div>
         </header>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mx-4 mt-4 rounded">
+            {error}
+          </div>
+        )}
+
+        {/* Domain Modal */}
+        {showDomainModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold mb-4">Add Custom Domain</h3>
+              
+              {domainInstructions ? (
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-4 rounded text-sm">
+                    <p className="font-medium mb-2">DNS Configuration Required:</p>
+                    <p className="text-gray-600 mb-2">{domainInstructions.message}</p>
+                    <div className="bg-white p-3 rounded border font-mono text-xs">
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <span className="text-gray-500">Type:</span>
+                        <span>{domainInstructions.type}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <span className="text-gray-500">Name:</span>
+                        <span>{domainInstructions.name}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <span className="text-gray-500">Value:</span>
+                        <span className="break-all">{domainInstructions.value}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <Button className="w-full" onClick={() => {setShowDomainModal(false); setDomainInstructions(null)}}>
+                    Done
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Domain</label>
+                    <input
+                      type="text"
+                      placeholder="yourdomain.com"
+                      value={customDomain}
+                      onChange={(e) => setCustomDomain(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-md text-sm"
+                    />
+                  </div>
+                  <div className="flex space-x-2">
+                    <Button className="flex-1" onClick={handleAddDomain} disabled={!customDomain}>
+                      Add Domain
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowDomainModal(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="container mx-auto px-4 py-6">
           <div className="grid lg:grid-cols-3 gap-6 h-[calc(100vh-120px)]">
