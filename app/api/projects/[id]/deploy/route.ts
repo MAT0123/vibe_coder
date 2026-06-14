@@ -30,9 +30,12 @@ export async function POST(request: Request, { params }: RouteParams) {
     if (type === 'static') {
       // Static deployment: files are served by our middleware
       // The URL is the subdomain or custom domain
+      let host = process.env.APP_DOMAIN || 'localhost:3000'
+      // Strip any leading protocol to prevent protocol duplication
+      host = host.replace(/^https?:\/\//, '')
       deploymentUrl = project.customDomain
         ? `https://${project.customDomain}`
-        : `https://${project.subdomain}.${process.env.APP_DOMAIN || 'localhost:3000'}`
+        : `https://${project.subdomain}.${host}`
     } else if (type === 'vercel') {
       const { deployToVercel } = await import('@/app/lib/vercel-deploy')
       const vercelDeployment = await deployToVercel(id)
