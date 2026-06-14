@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { COGNITO_DOMAIN, COGNITO_CLIENT_ID, COGNITO_CLIENT_SECRET, AWS_REGION, COGNITO_USER_POOL_ID } from "@/lib/cognito"
+import { signSession } from "@/lib/authMiddleware"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
 const REDIRECT_URI = `${APP_URL}/api/auth/callback`
@@ -74,11 +75,13 @@ export async function GET(req: NextRequest) {
     const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"))
     const email: string = payload.email || payload.username || payload["cognito:username"] || ""
 
+    let userEmailForSession = email
     if (email) {
       let localUser = db.findUserByEmail(email)
       if (!localUser) {
         localUser = db.createUser(email, "GOOGLE_OAUTH")
       }
+      userEmailForSession = localUser.email
     }
 
     // Set cookies and redirect to the app
@@ -94,6 +97,18 @@ export async function GET(req: NextRequest) {
       maxAge: expires_in || 3600,
       path: "/",
     })
+
+    if (userEmailForSession) {
+      nextResponse.cookies.set({
+        name: "vibe_session",
+        value: signSession(userEmailForSession),
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+        path: "/",
+      })
+    }
 
     if (refresh_token) {
       nextResponse.cookies.set({

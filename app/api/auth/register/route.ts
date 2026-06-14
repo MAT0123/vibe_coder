@@ -1,6 +1,7 @@
 import { SignUpCommand } from "@aws-sdk/client-cognito-identity-provider"
 import { cognitoClient, COGNITO_CLIENT_ID, computeSecretHash } from "@/lib/cognito"
 import { NextResponse } from "next/server"
+import { db } from "@/lib/db"
 
 export async function POST(req: Request) {
   try {
@@ -24,6 +25,11 @@ export async function POST(req: Request) {
     })
 
     const response = await cognitoClient.send(command)
+
+    // Store unverified user record in local database immediately upon signup
+    if (!db.findUserByEmail(username)) {
+      db.createUser(username, "COGNITO_UNVERIFIED")
+    }
 
     return NextResponse.json({
       success: true,

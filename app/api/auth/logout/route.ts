@@ -15,6 +15,17 @@ export async function POST() {
       path: "/"
     })
 
+    // Clear the vibe_session cookie
+    response.cookies.set({
+      name: "vibe_session",
+      value: "",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 0, // Expire immediately
+      path: "/"
+    })
+
     return response
   } catch (err: any) {
     console.error("Logout error:", err)

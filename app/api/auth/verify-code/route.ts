@@ -23,8 +23,10 @@ export async function POST(req: Request) {
 
     await cognitoClient.send(command)
 
-    // Create local user record on first confirmed sign-up
-    if (!db.findUserByEmail(username)) {
+    // Update local user record status to verified upon confirmation
+    if (db.findUserByEmail(username)) {
+      db.updateUserPasswordHash(username, "COGNITO_VERIFIED")
+    } else {
       db.createUser(username, "COGNITO_VERIFIED")
     }
 

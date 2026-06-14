@@ -5,6 +5,25 @@ import { getAuthenticatedUser } from '@/lib/authMiddleware';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+const REFINEMENT_SYSTEM_PROMPT = `You are an expert React/JSX developer working inside a browser-based live preview sandbox.
+
+## Output format
+Respond ONLY with a single valid JSON object.
+Format:
+{
+  "FileName.ext": {
+    "code": "string representation of the complete file content"
+  }
+}
+
+## Environment rules (CRITICAL)
+- React 18 and ReactDOM 18 are loaded as UMD globals — NEVER use import statements
+- Use React.useState, React.useEffect, React.useRef, etc.
+- JSX is compiled by SWC to ES5 — use only ES5-compatible JS (var/let/const, no optional chaining ?., no nullish coalescing ??, no class fields)
+- Tailwind CSS is available via CDN — use Tailwind classes for all styling
+- index.html must NOT contain a render script (injected automatically) and must NOT include a <script src="App.jsx">
+- App.jsx must NOT contain any import statements`;
+
 export async function POST(req: NextRequest) {
   const user = await getAuthenticatedUser(req);
   if (!user) {
@@ -23,7 +42,10 @@ export async function POST(req: NextRequest) {
     const currentFiles: Record<string, string> = body.files || {};
     const selectedModel: string = body.model || 'o3-mini';
 
-    const allowedModels = ['o3-mini', 'o1', 'gpt-4o', 'gpt-4o-mini'];
+    const allowedModels = [
+      'o3-mini', 'o1', 'gpt-4o', 'gpt-4o-mini',
+      'gpt-5', 'gpt-5-pro', 'gpt-5.5', 'gpt-5.5-pro'
+    ];
     const modelToUse = allowedModels.includes(selectedModel) ? selectedModel : 'o3-mini';
 
     // Build a code block for every existing file so the AI has full context
@@ -36,34 +58,15 @@ export async function POST(req: NextRequest) {
 
     const hasExistingFiles = Object.keys(currentFiles).length > 0;
 
-    const systemPrompt = `You are an expert React/JSX developer working inside a browser-based live preview sandbox.
-
-## Output format
-Respond ONLY with a single valid JSON object.
-Format:
-{
-  "FileName.ext": {
-    "code": "string representation of the complete file content"
-  }
-}
-
-## Environment rules (CRITICAL)
-- React 18 and ReactDOM 18 are loaded as UMD globals — NEVER use import statements
-- Use React.useState, React.useEffect, React.useRef, etc.
-- JSX is compiled by SWC to ES5 — use only ES5-compatible JS (var/let/const, no optional chaining ?., no nullish coalescing ??, no class fields)
-- Tailwind CSS is available via CDN — use Tailwind classes for all styling
-- index.html must NOT contain a render script (injected automatically) and must NOT include a <script src="App.jsx">
-- App.jsx must NOT contain any import statements
-
-## Your task
-${hasExistingFiles
-  ? `Apply the user's requested change to the existing project files below. Return ALL files (modified and unmodified).
+    const taskPrompt = hasExistingFiles
+      ? `Apply the user's requested change to the existing project files below. Return ALL files (modified and unmodified).
 
 ${filesContext}
 
 User's change request: ${userPrompt}`
-  : `Create a new project from scratch based on: ${userPrompt}`
-}`;
+      : `Create a new project from scratch based on: ${userPrompt}`;
+
+    const systemPrompt = `${REFINEMENT_SYSTEM_PROMPT}\n\n## Your task\n${taskPrompt}`;
 
     const completion = await openai.chat.completions.create({
       model: modelToUse,
@@ -91,7 +94,7 @@ User's change request: ${userPrompt}`
       return NextResponse.json({ error: 'AI output is not valid JSON. Please try again.' }, { status: 550 });
     }
 
-    const tokensUsed = completion.usage?.total_tokens as number * 1.10 || 1000;
+    const tokensUsed = Math.round((completion.usage?.total_tokens as number || 1000) * 1.50);
     const updatedUser = db.updateUserBalance(user.id, -tokensUsed);
     const balance = updatedUser ? updatedUser.tokenBalance : user.tokenBalance - tokensUsed;
 

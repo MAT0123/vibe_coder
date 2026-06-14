@@ -6,7 +6,23 @@
       "passwordHash": "COGNITO_VERIFIED",
       "tokenBalance": 24370.8,
       "createdAt": "2026-06-13T20:29:25.606Z"
+    },
+    {
+      "id": "d1roikfhf",
+      "email": "google_112381578776058219093",
+      "passwordHash": "GOOGLE_OAUTH",
+      "tokenBalance": 625000,
+      "createdAt": "2026-06-13T23:35:59.072Z"
     }
   ],
-  "payments": []
+  "payments": [
+    {
+      "id": "6v9pjapn0",
+      "userId": "d1roikfhf",
+      "amount": 20,
+      "tokensCredited": 600000,
+      "status": "COMPLETED",
+      "createdAt": "2026-06-13T23:44:57.585Z"
+    }
+  ]
 }

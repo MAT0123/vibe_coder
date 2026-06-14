@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import LandingPage from "@/components/LandingPage"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
 import { 
@@ -60,6 +61,10 @@ const PRESET_PROMPTS = [
 ]
 
 const AI_MODELS = [
+  { id: "gpt-5.5-pro", name: "gpt-5.5-pro (Flagship Pro)", desc: "OpenAI's latest flagship high-compute professional model" },
+  { id: "gpt-5.5", name: "gpt-5.5 (Flagship Standard)", desc: "OpenAI's latest standard flagship model" },
+  { id: "gpt-5-pro", name: "gpt-5-pro (Premium Reasoning)", desc: "Advanced reasoning-focused GPT-5 model" },
+  { id: "gpt-5", name: "gpt-5 (Premium Standard)", desc: "OpenAI's standard GPT-5 intelligence tier" },
   { id: "o3-mini", name: "o3-mini (Reasoning)", desc: "Default fast coding model with high reasoning ability" },
   { id: "o1", name: "o1 (High Reasoning)", desc: "Deep reasoning model for complex logical structures" },
   { id: "gpt-4o", name: "gpt-4o (Standard)", desc: "Vibrant multimodal model for general tasks" },
@@ -590,10 +595,9 @@ export default function WebBuilder() {
     )
   }
 
-  // Redirect unauthenticated users to the dedicated login page
+  // Render Landing Page for unauthenticated users
   if (!user) {
-    router.replace("/login")
-    return null
+    return <LandingPage />
   }
 
   // Dashboard View (Authenticated)

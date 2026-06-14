@@ -66,12 +66,22 @@ export const db = {
       id: Math.random().toString(36).substring(2, 11),
       email: email.toLowerCase(),
       passwordHash,
-      tokenBalance: 50000, // 50k tokens
+      tokenBalance: 25000, // 25k tokens (equivalent to ~$0.05 USD)
       createdAt: new Date().toISOString()
     }
     data.users.push(newUser)
     saveDb(data)
     return newUser
+  },
+
+  updateUserPasswordHash: (email: string, passwordHash: string): User | null => {
+    const data = initDb()
+    const userIndex = data.users.findIndex(u => u.email === email.toLowerCase())
+    if (userIndex === -1) return null
+
+    data.users[userIndex].passwordHash = passwordHash
+    saveDb(data)
+    return data.users[userIndex]
   },
 
   updateUserBalance: (userId: string, tokensToChange: number): User | null => {

@@ -7,26 +7,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function POST(req: NextRequest) {
-  const user = await getAuthenticatedUser(req);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
-  }
-
-  if (user.tokenBalance <= 0) {
-    return NextResponse.json({ error: "Insufficient tokens. Please purchase more tokens." }, { status: 402 });
-  }
-
-  try {
-    const body = await req.json();
-    const userPrompt = body.prompt || '';
-    const selectedModel = body.model || 'o3-mini';
-
-    const allowedModels = ['o3-mini', 'o1', 'gpt-4o', 'gpt-4o-mini'];
-    const modelToUse = allowedModels.includes(selectedModel) ? selectedModel : 'o3-mini';
-
-    const fullPrompt = `
-You are a strict code generator. Respond ONLY with a valid JSON object.
+const GENERATION_SYSTEM_PROMPT = `You are a strict code generator. Respond ONLY with a valid JSON object.
 
 Format:
 {
@@ -34,8 +15,6 @@ Format:
     "code": "string representation of the complete file content"
   }
 }
-
-User Request: ${userPrompt}
 
 CRITICAL Requirements:
 - Use React with functional components and hooks
@@ -104,8 +83,30 @@ Focus on:
 - Proper event handlers
 - Clear component logic
 
-Respond ONLY with the JSON object.
-`;
+Respond ONLY with the JSON object.`;
+
+export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
+  }
+
+  if (user.tokenBalance <= 0) {
+    return NextResponse.json({ error: "Insufficient tokens. Please purchase more tokens." }, { status: 402 });
+  }
+
+  try {
+    const body = await req.json();
+    const userPrompt = body.prompt || '';
+    const selectedModel = body.model || 'o3-mini';
+
+    const allowedModels = [
+      'o3-mini', 'o1', 'gpt-4o', 'gpt-4o-mini',
+      'gpt-5', 'gpt-5-pro', 'gpt-5.5', 'gpt-5.5-pro'
+    ];
+    const modelToUse = allowedModels.includes(selectedModel) ? selectedModel : 'o3-mini';
+
+    const fullPrompt = `${GENERATION_SYSTEM_PROMPT}\n\nUser Request: ${userPrompt}`;
 
     const completion = await openai.chat.completions.create({
       model: modelToUse,
@@ -141,7 +142,7 @@ Respond ONLY with the JSON object.
       return NextResponse.json({ error: 'AI output is not valid JSON' }, { status: 550 });
     }
 
-    const tokensUsed = completion.usage?.total_tokens || 1000;
+    const tokensUsed = Math.round((completion.usage?.total_tokens || 1000) * 1.50);
     
     // Update balance via custom JSON database
     const updatedUser = db.updateUserBalance(user.id, -tokensUsed);

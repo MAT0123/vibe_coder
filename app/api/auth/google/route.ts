@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest) {
   authUrl.searchParams.set("response_type", "code")
   authUrl.searchParams.set("client_id", COGNITO_CLIENT_ID)
   authUrl.searchParams.set("redirect_uri", REDIRECT_URI)
-  authUrl.searchParams.set("scope", "email openid profile")
+  authUrl.searchParams.set("scope", "email openid profile aws.cognito.signin.user.admin")
   authUrl.searchParams.set("identity_provider", "Google") // Force Google IdP
 
   return NextResponse.redirect(authUrl.toString())

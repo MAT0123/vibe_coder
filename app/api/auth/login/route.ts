@@ -2,6 +2,7 @@ import { InitiateAuthCommand } from "@aws-sdk/client-cognito-identity-provider"
 import { cognitoClient, COGNITO_CLIENT_ID, computeSecretHash } from "@/lib/cognito"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { signSession } from "@/lib/authMiddleware"
 
 export async function POST(req: Request) {
   try {
@@ -52,6 +53,16 @@ export async function POST(req: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: authResult.ExpiresIn || 3600,
+      path: "/"
+    })
+
+    nextResponse.cookies.set({
+      name: "vibe_session",
+      value: signSession(localUser.email),
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60, // 30 days
       path: "/"
     })
 
