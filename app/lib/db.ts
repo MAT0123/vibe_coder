@@ -4,18 +4,19 @@ const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017'
 const dbName = process.env.MONGODB_DB || 'lovable-clone'
 
 let client: MongoClient | null = null
-let db: Db | null = null
+let clientPromise: Promise<MongoClient> | null = null
+
+export async function getClient(): Promise<MongoClient> {
+  if (clientPromise) return clientPromise
+  
+  client = new MongoClient(uri)
+  clientPromise = client.connect()
+  return clientPromise
+}
 
 export async function getDb(): Promise<Db> {
-  if (db) return db
-  
-  if (!client) {
-    client = new MongoClient(uri)
-    await client.connect()
-  }
-  
-  db = client.db(dbName)
-  return db
+  const activeClient = await getClient()
+  return activeClient.db(dbName)
 }
 
 export async function getCollection(name: string) {
