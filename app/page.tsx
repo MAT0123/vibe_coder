@@ -89,20 +89,19 @@ export default function WebBuilder() {
     const processedFiles: Record<string, string> = {}
     await InitializeSwc()
     for (const [fileName, fileData] of Object.entries(parsedContent)) {
-      let { code } = fileData
-      //code = unescape(code)
-      setFiles((prev) => ({ ...prev, [fileName]: code }))
+      const { code } = fileData
+      const unescapedCode = code
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+        
+      setFiles((prev) => ({ ...prev, [fileName]: unescapedCode }))
 
       if (fileName.endsWith(".jsx")) {
-
-        const transformed = await transformJsx(code)
+        const transformed = await transformJsx(unescapedCode)
         processedFiles[fileName.replace('.jsx', '.js')] = transformed
       } else {
-        const unescapedCode = code
-          .replace(/\\n/g, '\n')
-          .replace(/\\t/g, '\t')
-          .replace(/\\"/g, '"')
-          .replace(/\\\\/g, '\\');
         processedFiles[fileName] = unescapedCode
       }
     }
